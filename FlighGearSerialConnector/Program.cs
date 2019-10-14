@@ -34,23 +34,37 @@ namespace FlighGearSerialConnector
             DestroyResources();
         }
 
-        static async void RunMonolithicConnection()
+        static void RunMonolithicConnection()
         {
-            while (!cancellationToken.Token.IsCancellationRequested)
+            Task serialReader = Task.Run(async () =>
             {
-                if (port.BytesToRead > 0)
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    byte[] buffer = new byte[port.BytesToRead];
-                    var bytesRead = await port.BaseStream.ReadAsync(buffer, 0, buffer.Length);
-                    Console.Write(System.Text.Encoding.ASCII.GetString(buffer, 0, bytesRead));
-                    await sendingUdp.SendAsync(buffer, bytesRead);
+                    byte[] startBuf = new byte[1];
+                    await port.BaseStream.ReadAsync(startBuf, 0, 1).ConfigureAwait(false);
+                    int toRead = port.BytesToRead;
+                    byte[] extraBuf = new byte[1 + toRead];
+                    extraBuf[0] = startBuf[0];
+                    if (toRead > 0)
+                    {
+                        await port.BaseStream.ReadAsync(extraBuf, 1, toRead).ConfigureAwait(false);
+                    }
+                    Console.Write(System.Text.Encoding.ASCII.GetString(extraBuf));
+                    await sendingUdp.SendAsync(extraBuf, extraBuf.Length).ConfigureAwait(false);
                 }
-                if (recievingUdp.Available > 0)
+            });
+
+            Task serialWriter = Task.Run(async () =>
+            {
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    var recieved = await recievingUdp.ReceiveAsync();
-                    await port.BaseStream.WriteAsync(recieved.Buffer, 0, recieved.Buffer.Length);
+                    var data = await recievingUdp.ReceiveAsync().ConfigureAwait(false);
+                    if (data.Buffer.Length >= 1)
+                    {
+                        await port.BaseStream.WriteAsync(data.Buffer, 0, data.Buffer.Length).ConfigureAwait(false);
+                    }
                 }
-            }
+            });
         }
 
         static bool CreateResources(string[] arguments)
@@ -60,7 +74,7 @@ namespace FlighGearSerialConnector
             {
                 Program.debug = debug;
                 if (debug) Console.WriteLine("Creating UDP clients");
-                recievingUdp = new UdpClient(inIp, inPort);
+                recievingUdp = new UdpClient(inPort);
                 sendingUdp = new UdpClient(outIp, outPort);
                 if (debug) Console.WriteLine("Doing serial name check");
                 if (!SerialPort.GetPortNames().Contains(comName))
@@ -78,7 +92,7 @@ namespace FlighGearSerialConnector
                     port.Open();
 
                     cancellationToken = new CancellationTokenSource();
-                    MainRunner = Task.Factory.StartNew(RunMonolithicConnection, cancellationToken.Token);
+                    MainRunner = Task.Factory.StartNew(RunMonolithicConnection);
                     return true;
                 }
             }
