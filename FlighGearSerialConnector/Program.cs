@@ -12,9 +12,11 @@ namespace FlighGearSerialConnector
         static SerialPort port;
         static UdpClient sendingUdp;
         static UdpClient recievingUdp;
-        static bool debug = false;
+        public static bool debug = false;
+        static bool copypastForwarder = false;
         static CancellationTokenSource cancellationToken;
         static Task MainRunner;
+        static SmartForwarder forwarder;
 
         static void Main(string[] args)
         {
@@ -69,9 +71,10 @@ namespace FlighGearSerialConnector
 
         static bool CreateResources(string[] arguments)
         {
-            (bool success, string outIp, int inPort, int outPort, string comName, int baudRate, bool debug) = LoadArguments(arguments);
+            (bool success, string outIp, int inPort, int outPort, string comName, int baudRate, bool debug, bool copyPast) = LoadArguments(arguments);
             if (success)
             {
+                Program.copypastForwarder = copyPast;
                 Program.debug = debug;
                 if (debug) Console.WriteLine("Creating UDP clients");
                 recievingUdp = new UdpClient(inPort);
@@ -92,7 +95,15 @@ namespace FlighGearSerialConnector
                     port.Open();
 
                     cancellationToken = new CancellationTokenSource();
-                    MainRunner = Task.Factory.StartNew(RunMonolithicConnection);
+                    if (copypastForwarder)
+                    {
+                        MainRunner = Task.Factory.StartNew(RunMonolithicConnection);
+                    }
+                    else
+                    {
+                        forwarder = new SmartForwarder(port, sendingUdp, recievingUdp, cancellationToken.Token);
+                        forwarder.Start();
+                    }
                     return true;
                 }
             }
@@ -104,7 +115,10 @@ namespace FlighGearSerialConnector
 
         static void DestroyResources()
         {
-            MainRunner.Wait();
+            if (copypastForwarder)
+                MainRunner.Wait();
+            else
+                forwarder.AwaitStop().Wait();
             sendingUdp.Close();
             sendingUdp.Dispose();
             recievingUdp.Close();
@@ -123,24 +137,26 @@ namespace FlighGearSerialConnector
             Console.WriteLine("--udp-out-ip=[ip]        The IP to send data on to FlightGear");
             Console.WriteLine("--com=[name]             The serial port name to listen to (ex. --com=COM19)");
             Console.WriteLine("--baud=[number]          The serial port baud rate to use (default 9600)");
+            Console.WriteLine("--copypast               Use the serial forwarder that just copy pastes the data instead of check it for changes and only then copying it");
         }
 
-        static (bool success, string outIp, int inPort, int outPort, string comName, int baud, bool debug) LoadArguments(string[] args)
+        static (bool success, string outIp, int inPort, int outPort, string comName, int baud, bool debug, bool copypast) LoadArguments(string[] args)
         {
             bool debug = false;
+            bool copyPast = false;
             foreach (var argument in args)
             {
                 var arg = argument.Trim();
                 if (arg == "--debug")
-                {
                     debug = true;
-                }
+                else if (arg == "--copypast")
+                    copyPast = true;
             }
             (string comName, int baudRate, bool invalidInCom) = RetrieveComData(args);
             (int inPort, int outPort, bool invalidInPorts) = RetreiveInOutPorts(args);
             (string outIp, bool invalidInIp) = RetreiveInOutIps(args);
             var invalidArgs = args.Where(arg => arg != "--debug"
-                                                && arg != "--echo"
+                                                && arg != "--copypast"
                                                 && !arg.StartsWith("--baud=")
                                                 && !arg.StartsWith("--com=")
                                                 && !arg.StartsWith("--udp-in-port=")
@@ -155,7 +171,8 @@ namespace FlighGearSerialConnector
                 outPort,
                 comName,
                 baudRate,
-                debug);
+                debug,
+                copyPast);
 
         }
 
