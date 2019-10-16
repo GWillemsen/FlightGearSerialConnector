@@ -41,7 +41,7 @@ namespace FlighGearSerialConnector
         /// </summary>
         public void Start()
         {
-            if (Program.debug) Console.WriteLine("Starting smart forwarder read and write tasks");
+            if (Program.Debug) Console.WriteLine("Starting smart forwarder read and write tasks");
             udpReader = Task.Run(UdpReaderWoker);
             udpWriter = Task.Run(UdpWriterWorker);
         }
@@ -52,9 +52,9 @@ namespace FlighGearSerialConnector
         /// <returns>The task representing the awaiting of the jobs</returns>
         public async Task WaitForStopAsync()
         {
-            if (Program.debug) Console.WriteLine("Awaiting smart forwarder read task");
+            if (Program.Debug) Console.WriteLine("Awaiting smart forwarder read task");
             await udpReader.ConfigureAwait(false);
-            if (Program.debug) Console.WriteLine("Awaiting smart forwarder write task");
+            if (Program.Debug) Console.WriteLine("Awaiting smart forwarder write task");
             await udpWriter.ConfigureAwait(false);
         }
 
@@ -63,7 +63,7 @@ namespace FlighGearSerialConnector
         /// </summary>
         private async void UdpReaderWoker()
         {
-            if (Program.debug) Console.WriteLine("UdpReader (serial writer) is started");
+            if (Program.Debug) Console.WriteLine("UdpReader (serial writer) is started");
             while (!cancellationToken.IsCancellationRequested)
             {
                 var lineData = await readingUdp.ReceiveAsync().ConfigureAwait(false);
@@ -84,7 +84,7 @@ namespace FlighGearSerialConnector
                     }
                     if (hasChange)
                     {
-                        if (Program.debug) Console.WriteLine("The output from FlightGear has changes. Updating to serial. Data: " + data);
+                        if (Program.Debug) Console.WriteLine("The output from FlightGear has changes. Updating to serial. Data: " + data);
                         await port.BaseStream.WriteAsync(lineData.Buffer).ConfigureAwait(false);
                     }
                 }
@@ -99,7 +99,7 @@ namespace FlighGearSerialConnector
             byte[] startBuf = new byte[1];
             string serialData = "";
             bool firstRound = true;
-            if (Program.debug) Console.WriteLine("UdpWriter (serial reader) is started");
+            if (Program.Debug) Console.WriteLine("UdpWriter (serial reader) is started");
             while (!cancellationToken.IsCancellationRequested)
             {
                 if (port.IsOpen)
@@ -124,7 +124,7 @@ namespace FlighGearSerialConnector
                         if (DecodeSerialData(ref serialData, firstRound))
                         {
                             string newDataStr = string.Join(",", fromSerialData.Values) + "\n";
-                            if (Program.debug) Console.WriteLine("The output from serial has changes. Updating to FlightGear. Data: " + newDataStr);
+                            if (Program.Debug) Console.WriteLine("The output from serial has changes. Updating to FlightGear. Data: " + newDataStr);
                             byte[] newData = System.Text.Encoding.ASCII.GetBytes(newDataStr);
                             await writingUdp.SendAsync(newData, newData.Length).ConfigureAwait(false);
                         }

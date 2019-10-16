@@ -41,9 +41,9 @@ namespace FlighGearSerialConnector
         /// <returns>The task representing the waiting</returns>
         public async Task WaitForStopAsync()
         {
-            if (Program.debug) Console.WriteLine("Awaiting basic forwarder read task");
+            if (Program.Debug) Console.WriteLine("Awaiting basic forwarder read task");
             await udpReader.ConfigureAwait(false);
-            if (Program.debug) Console.WriteLine("Awaiting basic forwarder write task");
+            if (Program.Debug) Console.WriteLine("Awaiting basic forwarder write task");
             await udpWriter.ConfigureAwait(false);
         }
 
@@ -52,7 +52,7 @@ namespace FlighGearSerialConnector
         /// </summary>
         public void Start()
         {
-            if (Program.debug) Console.WriteLine("Starting basic forwarder read and write tasks");
+            if (Program.Debug) Console.WriteLine("Starting basic forwarder read and write tasks");
 
             // the task that is busy reading the serial and copying it to UDP
             udpWriter = Task.Run(UdpWriterTask);

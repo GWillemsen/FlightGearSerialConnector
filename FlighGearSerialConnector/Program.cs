@@ -10,10 +10,10 @@ namespace FlighGearSerialConnector
 {
     class Program
     {
+        public static bool Debug = false;
         static SerialPort port;
         static UdpClient sendingUdp;
         static UdpClient recievingUdp;
-        public static bool debug = false;
         static bool copypastForwarder = false;
         static CancellationTokenSource cancellationToken;
         static IForwarder forwarder;
@@ -51,7 +51,7 @@ namespace FlighGearSerialConnector
             if (success)
             {
                 copypastForwarder = copyPast;
-                Program.debug = debug;
+                Program.Debug = debug;
                 if (debug) Console.WriteLine("Creating UDP clients");
                 recievingUdp = new UdpClient(inPort);
                 sendingUdp = new UdpClient(outIp, outPort);
