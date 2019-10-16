@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO.Ports;
 using System.Net.Sockets;
 using System.Threading;
@@ -6,7 +7,10 @@ using System.Threading.Tasks;
 
 namespace FlighGearSerialConnector
 {
-    public class SmartForwarder
+    /// <summary>
+    /// Forwarder that only forwards messages with new data
+    /// </summary>
+    public sealed class SmartForwarder : IForwarder
     {
         private readonly SerialPort port;
         private readonly UdpClient writingUdp;
@@ -17,6 +21,13 @@ namespace FlighGearSerialConnector
         private readonly Dictionary<int, string> toSerialData = new Dictionary<int, string>();
         private readonly Dictionary<int, string> fromSerialData = new Dictionary<int, string>();
 
+        /// <summary>
+        /// Creates a new <see cref="SmartForwarder"/>
+        /// </summary>
+        /// <param name="port"></param>
+        /// <param name="sending"></param>
+        /// <param name="recieving"></param>
+        /// <param name="token"></param>
         public SmartForwarder(SerialPort port, UdpClient sending, UdpClient recieving, CancellationToken token)
         {
             this.port = port;
@@ -30,6 +41,7 @@ namespace FlighGearSerialConnector
         /// </summary>
         public void Start()
         {
+            if (Program.Debug) Console.WriteLine("Starting smart forwarder read and write tasks");
             udpReader = Task.Run(UdpReaderWoker);
             udpWriter = Task.Run(UdpWriterWorker);
         }
@@ -38,15 +50,20 @@ namespace FlighGearSerialConnector
         /// Await the task from the reader and writer jobs
         /// </summary>
         /// <returns>The task representing the awaiting of the jobs</returns>
-        public async Task AwaitStop()
+        public async Task WaitForStopAsync()
         {
+            if (Program.Debug) Console.WriteLine("Awaiting smart forwarder read task");
             await udpReader.ConfigureAwait(false);
+            if (Program.Debug) Console.WriteLine("Awaiting smart forwarder write task");
             await udpWriter.ConfigureAwait(false);
         }
 
+        /// <summary>
+        /// The worker that processes the incoming UDP data
+        /// </summary>
         private async void UdpReaderWoker()
         {
-            if (Program.debug) System.Console.WriteLine("UdpReader (serial writer) is started");
+            if (Program.Debug) Console.WriteLine("UdpReader (serial writer) is started");
             while (!cancellationToken.IsCancellationRequested)
             {
                 var lineData = await readingUdp.ReceiveAsync().ConfigureAwait(false);
@@ -67,19 +84,22 @@ namespace FlighGearSerialConnector
                     }
                     if (hasChange)
                     {
-                        if (Program.debug) System.Console.WriteLine("The output from FlightGear has changes. Updating to serial. Data: " + data);
+                        if (Program.Debug) Console.WriteLine("The output from FlightGear has changes. Updating to serial. Data: " + data);
                         await port.BaseStream.WriteAsync(lineData.Buffer).ConfigureAwait(false);
                     }
                 }
             }
         }
 
+        /// <summary>
+        /// The worker that processes the incoming serial data
+        /// </summary>
         private async void UdpWriterWorker()
         {
             byte[] startBuf = new byte[1];
             string serialData = "";
             bool firstRound = true;
-            if (Program.debug) System.Console.WriteLine("UdpWriter (serial reader) is started");
+            if (Program.Debug) Console.WriteLine("UdpWriter (serial reader) is started");
             while (!cancellationToken.IsCancellationRequested)
             {
                 if (port.IsOpen)
@@ -100,31 +120,38 @@ namespace FlighGearSerialConnector
                         }
                         serialData += port.Encoding.GetString(readBuf, 0, bytesInBuffer + 1);
 
+                        // process the serial data present
                         if (DecodeSerialData(ref serialData, firstRound))
                         {
                             string newDataStr = string.Join(",", fromSerialData.Values) + "\n";
-                            if (Program.debug) System.Console.WriteLine("The output from serial has changes. Updating to FlightGear. Data: " + newDataStr);
+                            if (Program.Debug) Console.WriteLine("The output from serial has changes. Updating to FlightGear. Data: " + newDataStr);
                             byte[] newData = System.Text.Encoding.ASCII.GetBytes(newDataStr);
                             await writingUdp.SendAsync(newData, newData.Length).ConfigureAwait(false);
                         }
                         firstRound = false;
 
-                        //return the buffer
+                        //return the buffer      
                         System.Buffers.ArrayPool<byte>.Shared.Return(readBuf, true);
                     }
                 }
             }
         }
 
-        private bool DecodeSerialData(ref string serialData, bool firstRound)
+        /// <summary>
+        /// Processes the messages from the serial data in the string
+        /// </summary>
+        /// <param name="serialData">The serial data to process</param>
+        /// <param name="act">Should it act upon the serial data (add it to the <seealso cref="fromSerialData"/>)</param>
+        /// <returns>Whether the data changed</returns>
+        private bool DecodeSerialData(ref string serialData, bool act)
         {
-            int lineEnding = serialData.IndexOf('\n');
+            int lineEnding = serialData.IndexOf('\n', StringComparison.InvariantCulture);
             bool hasChange = false;
             while (lineEnding > -1)
             {
                 string partData = serialData.Substring(0, lineEnding);
                 serialData = serialData.Remove(0, lineEnding + 1);
-                if (!firstRound)
+                if (!act)
                 {
                     string[] parts = partData.Split(",");
                     for (int partIndex = 0; partIndex < parts.Length; partIndex++)
@@ -138,7 +165,7 @@ namespace FlighGearSerialConnector
                         }
                     }
                 }
-                lineEnding = serialData.IndexOf('\n');
+                lineEnding = serialData.IndexOf('\n', StringComparison.InvariantCulture);
             }
             return hasChange;
         }
