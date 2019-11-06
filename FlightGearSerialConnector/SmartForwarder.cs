@@ -20,7 +20,7 @@ namespace FlighGearSerialConnector
         private Task udpWriter;
         private readonly Dictionary<int, string> toSerialData = new Dictionary<int, string>();
         private readonly Dictionary<int, string> fromSerialData = new Dictionary<int, string>();
-
+        
         /// <summary>
         /// Creates a new <see cref="SmartForwarder"/>
         /// </summary>
@@ -66,7 +66,9 @@ namespace FlighGearSerialConnector
             if (Program.Debug) Console.WriteLine("UdpReader (serial writer) is started");
             while (!cancellationToken.IsCancellationRequested)
             {
+                if (Program.Debug) Console.WriteLine(DateTime.Now.ToShortTimeString() + " Waiting for UDP package");
                 var lineData = await readingUdp.ReceiveAsync().ConfigureAwait(false);
+                if (Program.Debug) Console.WriteLine(DateTime.Now.ToShortTimeString() + " Reading UDP package");
                 if (!cancellationToken.IsCancellationRequested)
                 {
                     string data = System.Text.Encoding.ASCII.GetString(lineData.Buffer);
@@ -84,8 +86,11 @@ namespace FlighGearSerialConnector
                     }
                     if (hasChange)
                     {
-                        if (Program.Debug) Console.WriteLine("The output from FlightGear has changes. Updating to serial. Data: " + data);
+                        if (Program.Debug) Console.WriteLine(DateTime.Now + " The output from FlightGear has changes. Updating to serial. Data: " + data.Replace("#", "#\r\n"));
+                        if (Program.Debug) Console.Title = data.Replace("\r\n", "\\r\\n").Replace("\n", "\\n");
+                        // make this string based and then send
                         await port.BaseStream.WriteAsync(lineData.Buffer).ConfigureAwait(false);
+                        if (Program.Debug) Console.WriteLine(DateTime.Now.ToShortTimeString() + " Write to serial complete");
                     }
                 }
             }
@@ -118,6 +123,7 @@ namespace FlighGearSerialConnector
                             // either read all data from the serial port, of until the buffer is full
                             bytesInBuffer = await port.BaseStream.ReadAsync(readBuf, 1, readBuf.Length - 1).ConfigureAwait(false);
                         }
+                        if (Program.Debug) Console.WriteLine(DateTime.Now + " From serial data:" + port.Encoding.GetString(readBuf, 0, bytesInBuffer).Replace("\r\n", "\\r\\n").Replace("\n", "\\n"));
                         serialData += port.Encoding.GetString(readBuf, 0, bytesInBuffer + 1);
 
                         // process the serial data present
