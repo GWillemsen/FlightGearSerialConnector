@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "FlighGearSerialConnector": {
+      "commandName": "Project",
+      "commandLineArgs": "--com=COM11 --udp-in-port=49998 --udp-out-port=49999 --udp-out-ip=127.0.0.1 --debug --baud=57600"
+    }
+  }
+}
